@@ -8,13 +8,14 @@ import csv
 import io
 import base64
 from datetime import datetime
-from typing import Dict, Iterable, List, Tuple, Optional
+from typing import Any, Dict, Iterable, List, Tuple, Optional
 
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from app.models.stock_model import Stock
 from app.models.category_model import Category
+from app.utils.csv_inspector import inspect_csv
 
 # CSV 헤더 고정
 CSV_HEADERS = [
