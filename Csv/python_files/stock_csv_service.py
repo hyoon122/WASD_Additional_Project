@@ -8,10 +8,10 @@ import csv
 import io
 import base64
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, Tuple, Optional
+from typing import Any, Dict, Iterable, List, Tuple, Optional, Literal
 
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from app.models.stock_model import Stock
 from app.models.category_model import Category
@@ -57,11 +57,11 @@ class StockCsvService:
         # 키워드 필터
         if keyword:
             like = f"%{keyword}%"
-            # ilike 사용 위해 DB가 대소문자 무시 지원해야 함. 미지원 시 lower 비교로 변경 필요.
-            query = query.where(Stock.name.ilike(like))
+            # 모든 DB에서 동작하도록 lower 비교로 통일
+            query = query.where(func.lower(Stock.name).like(func.lower(like)))
 
         # 카테고리 필터
-        if category_id:
+        if category_id is not None:
             query = query.where(Stock.category_id == category_id)
 
         # 정렬
@@ -81,6 +81,8 @@ class StockCsvService:
                 query = query.order_by(
                     order_col.asc() if direction == "asc" else order_col.desc()
                 )
+        else:
+            query = query.order_by(Stock.id.asc())        
 
         # 헤더 라인 먼저 출력
         header_io = io.StringIO()
@@ -118,152 +120,259 @@ class StockCsvService:
 
     def import_csv(
         self,
-        db: Session,
+        db,                   # Session 타입이어도 되고, 여기선 사용 안 함
         file_bytes: bytes,
         *,
-        dry_run: bool = True,
-        upsert: bool = True,
-        chunk_size: int = 1000,
-    ) -> Dict:
+        dry_run: bool = True,  # 현재는 드라이런만 지원
+        upsert: bool = True,   # 자리만 잡아둠(미사용)
+        chunk_size: int = 1000 # 자리만 잡아둠(미사용)
+    ) -> Dict[str, Any]:
         """
-        CSV 임포트 수행
-        - dry_run=True: 검증만, DB 미반영
-        - upsert=True: id 존재 시 업데이트, 없으면 생성
-        - chunk_size: 커밋 단위
-        - 반환: 리포트 dict (dry_run 시 errors.csv Base64 포함)
+        안정화 버전 CSV 임포트
+        - DB 미반영 드라이런만 지원
+        - 인코딩/구분자 자동감지 + 헤더 표준화 + 기본 검증
+        - 외부 헬퍼 의존성 전부 제거
         """
-        text_io = io.TextIOWrapper(io.BytesIO(file_bytes), encoding="utf-8")
-        reader = csv.DictReader(text_io)
-        _ensure_header(reader.fieldnames)
+        # 1) 파일 형식 분석
+        ins = inspect_csv(file_bytes)  # encoding, delimiter, header_map, preview_rows 확보
+        text_io = io.TextIOWrapper(io.BytesIO(file_bytes), encoding=ins.encoding, newline="")
+        reader = csv.DictReader(text_io, delimiter=ins.delimiter)
 
-        rows = list(reader)
-        total_rows = len(rows)
-        errors: List[Dict] = []
+        original_headers = reader.fieldnames or []
+        header_map = ins.header_map
+        normalized_headers = [header_map.get(h, h) for h in original_headers]
 
-        # 카테고리 캐시
-        existing_category_ids = _load_category_id_set(db)
-
-        # 1차 검증
-        parsed: List[Tuple[int, Dict]] = []  # (rownum, clean_dict)
-        seen_ids: Dict[int, int] = {}  # id -> 최초 발견 행번호
-        for idx, raw in enumerate(rows, start=2):  # 헤더 다음이 2행
-            clean, row_errors = _validate_and_clean(raw, idx, existing_category_ids)
-            if row_errors:
-                errors.extend(row_errors)
-                continue
-
-            # 같은 id 중복 검사
-            if clean.get("id") is not None:
-                cid = clean["id"]
-                if cid in seen_ids:
-                    errors.append(
-                        {"row": idx, "field": "id", "message": f"중복 id (이전에 {seen_ids[cid]}행에서 등장)"}
-                    )
-                else:
-                    seen_ids[cid] = idx
-
-            parsed.append((idx, clean))
-
-        if dry_run:
-            # upsert 시뮬레이션 집계
-            would_create = 0
-            would_update = 0
-            if upsert:
-                existing_ids = _load_existing_stock_ids(
-                    db, [p[1]["id"] for p in parsed if p[1]["id"] is not None]
-                )
-                for _, d in parsed:
-                    if d.get("id") and d["id"] in existing_ids:
-                        would_update += 1
-                    else:
-                        would_create += 1
-            else:
-                for _, d in parsed:
-                    if d.get("id") is None:
-                        would_create += 1
-                    else:
-                        errors.append(
-                            {"row": 0, "field": "id", "message": "upsert=false에서는 id 지정 불가"}
-                        )
-
-            # errors.csv(Base64) 생성(있을 때만)
-            errors_csv_b64 = None
-            errors_csv_filename = None
-            if errors:
-                ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-                errors_csv_filename = f"stocks_import_errors_{ts}.csv"
-                errors_csv_b64 = _errors_to_csv_b64(errors)
-
+        # 2) 필수 헤더 최소셋 검사
+        required_min = ["name", "inventory"]
+        missing = [h for h in required_min if h not in normalized_headers]
+        if missing:
             return {
                 "dry_run": True,
-                "total_rows": total_rows,
-                "valid_rows": len(parsed),
-                "invalid_rows": len(errors),
-                "errors": errors,
-                "would_create": would_create,
-                "would_update": would_update,
-                "upsert": upsert,
-                "errors_csv_b64": errors_csv_b64,
-                "errors_csv_filename": errors_csv_filename,
+                "total_rows": 0,
+                "valid_rows": 0,
+                "invalid_rows": 1,
+                "errors": [{"row": 0, "field": ",".join(missing), "message": f"필수 헤더 누락: {missing}"}],
+                "encoding": ins.encoding,
+                "delimiter": ins.delimiter,
+                "headers_original": original_headers,
+                "headers_normalized": normalized_headers,
             }
 
-        # 실제 반영 (청크 단위 트랜잭션)
-        created = 0
-        updated = 0
+        # 3) 행 단위 표준화 + 기본 검증
+        total = 0
+        valid = 0
+        errors: List[Dict[str, Any]] = []
+        parsed: List[Dict[str, Any]] = []
 
-        existing_ids = _load_existing_stock_ids(
-            db, [p[1]["id"] for p in parsed if p[1]["id"] is not None]
-        )
+        for idx, raw in enumerate(reader, start=2):  # 헤더가 1행
+            total += 1
+            # 원본키 → 표준키
+            row: Dict[str, str] = {}
+            for k, v in (raw or {}).items():
+                nk = header_map.get(k, k)
+                row[nk] = (v or "").strip()
 
-        for i in range(0, len(parsed), chunk_size):
-            chunk = parsed[i : i + chunk_size]
+            # 필수값 검사
+            missing_vals = [f for f in required_min if not row.get(f)]
+            if missing_vals:
+                errors.append({
+                    "row": idx,
+                    "field": ",".join(missing_vals),
+                    "message": f"필수 값 비어 있음: {missing_vals}",
+                })
+                continue
+
+            # 타입 검사: inventory → 정수
+            inv = row.get("inventory", "")
             try:
-                for _, d in chunk:
-                    if upsert and d.get("id") and d["id"] in existing_ids:
-                        # 업데이트
-                        db_obj = db.get(Stock, d["id"])
-                        if db_obj is None:
-                            # 동시성으로 사라진 경우 생성으로 대체
-                            db_obj = Stock()
-                            _assign_stock(db_obj, d, is_create=True)
-                            db.add(db_obj)
-                            created += 1
-                        else:
-                            _assign_stock(db_obj, d)
-                            updated += 1
-                    else:
-                        # 생성
-                        db_obj = Stock()
-                        _assign_stock(db_obj, d, is_create=True)
-                        db.add(db_obj)
-                        created += 1
-                db.commit()
-            except Exception as e:
-                db.rollback()
-                errors.append(
-                    {"row": 0, "field": "chunk", "message": f"청크 커밋 실패: {e}"}
-                )
+                # 정수만 허용
+                int(inv)
+            except Exception:
+                errors.append({
+                    "row": idx,
+                    "field": "inventory",
+                    "message": f"inventory는 정수여야 함: '{inv}'",
+                })
+                continue
 
+            parsed.append(row)
+            valid += 1
+
+        # 4) 드라이런 리포트 반환 (DB 미반영)
         return {
-            "dry_run": False,
-            "total_rows": total_rows,
-            "valid_rows": len(parsed),
+            "dry_run": True if dry_run else False,
+            "total_rows": total,
+            "valid_rows": valid,
             "invalid_rows": len(errors),
             "errors": errors,
-            "created": created,
-            "updated": updated,
-            "upsert": upsert,
+            "encoding": ins.encoding,
+            "delimiter": ins.delimiter,
+            "headers_original": original_headers,
+            "headers_normalized": normalized_headers,
+            "preview": ins.preview_rows,  # 표준키 기반 앞 5행
+    }
+    
+    def dry_run(
+        self,
+        file_bytes: bytes,
+        *,
+        mode: Literal["insert", "upsert", "update-only"] = "upsert",
+        conflict: Literal["skip", "overwrite"] = "skip",
+        key_fields: Optional[List[str]] = None,
+        preview_limit: int = 5,
+        error_limit: int = 200,
+    ) -> Dict[str, Any]:
+        """
+        CSV 드라이런 실행
+        - DB 변경 없음
+        - 파일 형식/헤더/타입 검증 및 요약 리포트 반환
+        """
+
+        # 로컬 기준 필수/키 정의. 클래스 상단에 이미 동일 상수가 있으면 그거 사용 권장
+        required_fields = ["name", "inventory"]      # 필수 필드
+        default_key_fields = ["id"]                # 기본 키 필드
+        key_fields = key_fields or default_key_fields
+
+        # 1) 파일 형식 분석: 인코딩/구분자/헤더 맵/미리보기 확보
+        inspected = inspect_csv(
+            file_bytes,
+            header_aliases=getattr(self, "header_aliases", None),
+            preview_limit=preview_limit,
+        )
+
+        # 2) 전체 행 검사 위해 다시 열기
+        text = file_bytes.decode(inspected.encoding, errors="replace")
+        reader = csv.DictReader(io.StringIO(text), delimiter=inspected.delimiter)
+        original_headers = reader.fieldnames or []
+        header_map = inspected.header_map
+
+        # 3) 헤더 검증
+        normalized_headers = [header_map.get(h, h) for h in original_headers]
+        errors: List[Dict[str, Any]] = []
+
+        for req in required_fields:
+            if req not in normalized_headers:
+                errors.append({
+                    "row": 0,
+                    "field": req,
+                    "code": "MISSING_REQUIRED_HEADER",
+                    "message": f"필수 헤더 없음: {req}",
+                })
+
+        for k in key_fields:
+            if k not in normalized_headers:
+                errors.append({
+                    "row": 0,
+                    "field": k,
+                    "code": "MISSING_KEY_HEADER",
+                    "message": f"키 헤더 없음: {k}",
+                })
+
+        # 4) 행 단위 정적 검증
+        total_rows = 0
+        key_seen = set()
+
+        def build_row_key(row_norm: Dict[str, Any]):
+            try:
+                return tuple((row_norm.get(k) or "").strip() for k in key_fields)
+            except Exception:
+                return None
+
+        for idx, row in enumerate(reader, start=2):  # 헤더 1행 기준, 데이터는 2행부터
+            total_rows += 1
+            if len(errors) >= error_limit:
+                break
+
+            # 표준키로 맵핑
+            row_norm: Dict[str, str] = {}
+            for k, v in (row or {}).items():
+                nk = header_map.get(k, k)
+                row_norm[nk] = (v or "").strip()
+
+            # 필수값 확인
+            for req in required_fields:
+                if not row_norm.get(req):
+                    errors.append({
+                        "row": idx,
+                        "field": req,
+                        "code": "REQUIRED_VALUE_EMPTY",
+                        "message": f"필수 값 비어 있음: {req}",
+                    })
+                    if len(errors) >= error_limit:
+                        break
+            if len(errors) >= error_limit:
+                break
+
+            # 타입 확인: inventory 숫자 여부
+            qv = row_norm.get("inventory", "")
+            if qv:
+                try:
+                    float(qv)
+                except Exception:
+                    errors.append({
+                        "row": idx,
+                        "field": "inventory",
+                        "code": "TYPE_NUMBER_INVALID",
+                        "message": f"숫자여야 함: '{qv}'",
+                    })
+
+            # 파일 내부 키 중복 체크
+            row_key = build_row_key(row_norm)
+            if row_key is None or any(v == "" for v in row_key):
+                errors.append({
+                    "row": idx,
+                    "field": ",".join(key_fields),
+                    "code": "KEY_INCOMPLETE",
+                    "message": f"키 필드({key_fields}) 중 빈 값 존재",
+                })
+            else:
+                if row_key in key_seen:
+                    errors.append({
+                        "row": idx,
+                        "field": ",".join(key_fields),
+                        "code": "KEY_DUPLICATED_IN_FILE",
+                        "message": f"파일 내부 키 중복: {row_key}",
+                    })
+                else:
+                    key_seen.add(row_key)
+
+            if len(errors) >= error_limit:
+                break
+
+        # 5) 요약(예측치는 DB 미조회라 None 처리)
+        summary: Dict[str, Any] = {
+            "mode": mode,
+            "conflict": conflict,
+            "encoding": inspected.encoding,
+            "delimiter": inspected.delimiter,
+            "headers_original": original_headers,
+            "headers_normalized": normalized_headers,
+            "required_fields": required_fields,
+            "key_fields": key_fields,
+            "total_rows": total_rows,
+            "predicted_inserts": None,
+            "predicted_updates": None,
+            "predicted_skips": None,
         }
 
+        # 6) 리포트 반환
+        return {
+            "summary": summary,
+            "preview": inspected.preview_rows,    # 표준키 기반 N행
+            "errors": errors,
+            "error_count": len(errors),
+            "error_limit_reached": len(errors) >= error_limit,
+        }
 
 # ---------- 내부 유틸 ----------
 
 def _ensure_header(fields: List[str] | None) -> None:
     if not fields:
         raise ValueError("CSV 헤더 없음")
-    missing = [h for h in CSV_HEADERS if h not in fields]
+    required_min = ["name", "inventory"]
+    missing = [h for h in required_min if h not in fields]
     if missing:
-        raise ValueError(f"헤더 불일치: {missing} 누락")
+        raise ValueError(f"필수 헤더 누락: {missing}")
 
 
 def _iso(dt: datetime | None) -> str:
@@ -275,10 +384,12 @@ def _to_str(v) -> str:
 
 
 def _parse_int(s: str | None) -> Tuple[Optional[int], Optional[str]]:
-    if s is None or s == "":
+    # 정수 전용 파서: 공백·콤마 제거 후 int 변환
+    if s is None or s.strip() == "":
         return None, None
+    val = s.strip().replace(",", "")
     try:
-        return int(s), None
+        return int(val), None
     except Exception:
         return None, "정수만 허용"
 
@@ -395,6 +506,7 @@ def _assign_stock(obj: Stock, d: Dict, *, is_create: bool = False) -> None:
     else:
         if d.get("created_at"):
             obj.created_at = d["created_at"]
+    # updated_at은 항상 최신화
     obj.updated_at = d.get("updated_at") or now
 
 
@@ -410,3 +522,4 @@ def _errors_to_csv_b64(errors: List[Dict]) -> str:
         writer.writerow([e.get("row", ""), e.get("field", ""), e.get("message", "")])
     raw = buf.getvalue().encode("utf-8")
     return base64.b64encode(raw).decode("ascii")
+
