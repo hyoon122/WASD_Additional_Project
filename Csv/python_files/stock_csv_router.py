@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Query, UploadFile, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
 from sqlalchemy.orm import Session
 
@@ -23,7 +23,7 @@ _service = StockCsvService()  # 상태 없음. DI 단순화
 @router.get("/export.csv")
 def export_stocks_csv(
     keyword: Optional[str] = Query(None, description="이름 부분 검색"),
-    categoryId: Optional[int] = Query(None, alias="categoryId", description="카테고리 필터"),
+    category_id: Optional[int] = Query(None, alias="categoryId", description="카테고리 필터"),
     sort: Optional[str] = Query(None, description='정렬 키: "id:asc", "name:desc" 등'),
     db: Session = Depends(get_db),
 ):
@@ -32,22 +32,27 @@ def export_stocks_csv(
     - 페이징 파라미터는 무시. 필터(keyword, categoryId), 정렬(sort)만 반영.
     - 결과는 text/csv 스트리밍
     """
-    # 파일명: stocks_YYYYMMDD_HHMMSS.csv (서버 로컬 타임 기준)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"stocks_{ts}.csv"
+    try:
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"stocks_{ts}.csv"
 
-    # 서비스 레이어 스트림 제너레이터
-    stream = _service.export_stream(
-        db,
-        keyword=keyword,
-        category_id=categoryId,
-        sort=sort,
-    )
+        stream = _service.export_stream(
+            db,
+            keyword=keyword,
+            category_id=category_id,
+            sort=sort,
+        )
 
-    headers = {
-        "Content-Disposition": f'attachment; filename="{filename}"'
-    }
-    return StreamingResponse(stream, media_type="text/csv; charset=utf-8", headers=headers)
+        headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+        # 주의: StreamingResponse의 media_type은 헤더와 별도 지정
+        return StreamingResponse(
+            stream,
+            media_type="text/csv; charset=utf-8",
+            headers=headers,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"CSV export 실패: {e}")
+
 
 
 @router.post("/import", response_class=JSONResponse)
@@ -63,14 +68,19 @@ async def import_stocks_csv(
     - upsert=True: id 존재 시 업데이트, 없으면 생성.
     - 실패 행은 errors에 누적.
     """
-    # 파일 읽기
-    file_bytes = await file.read()
+    try:
+        file_bytes = await file.read()
+        if not file_bytes:
+            raise HTTPException(status_code=422, detail="업로드된 파일이 비어있음")
 
-    # 서비스 호출
-    report = _service.import_csv(
-        db,
-        file_bytes,
-        dry_run=dry_run,
-        upsert=upsert,
-    )
-    return JSONResponse(content=report, status_code=200)
+        report = _service.import_csv(
+            db,
+            file_bytes,
+            dry_run=dry_run,
+            upsert=upsert,
+        )
+        return JSONResponse(content=report, status_code=200)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"CSV import 실패: {e}")
