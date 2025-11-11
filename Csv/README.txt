@@ -5,6 +5,9 @@
 2. 파일명: stock_csv_router.py
 경로: app/routers/stock_csv_router.py
 
+3. 파일명: csv_inspector.py
+경로: app/utils/csv_inspector.py
+
 -------------------------------------------------------------------------------------------------------------------
 
 < 환경설정 >

@@ -1,0 +1,76 @@
+├── Ec2-Vscode.md
+├── README copy.md
+├── README.md
+├── TroubleShooting.md
+├── alembic.ini
+├── app
+│   ├── core
+│   │   ├── config.py
+│   │   └── database.py
+│   ├── crud
+│   │   ├── category_crud.py
+│   │   ├── log_crud.py
+│   │   ├── pin_crud.py
+│   │   ├── robot_crud.py
+│   │   └── stock_crud.py
+│   ├── main.py
+│   ├── models
+│   │   ├── __init__.py
+│   │   ├── category_model.py
+│   │   ├── log_model.py
+│   │   ├── pin_model.py
+│   │   ├── robot_model.py
+│   │   └── stock_model.py
+│   ├── routers
+│   │   ├── category_router.py
+│   │   ├── log_router.py
+│   │   ├── page_router.py
+│   │   ├── pin_router.py
+│   │   ├── robot_router.py
+│   │   ├── stock_router.py
+│   │   └── stock_csv_router.py     ← 새로 추가됨: CSV API (HTTP 라우터)
+│   ├── schemas
+│   │   ├── category_schema.py
+│   │   ├── log_schema.py
+│   │   ├── pin_schema.py
+│   │   ├── robot_schema.py
+│   │   └── stock_schema.py
+│   ├── services
+│   │   ├── category_service.py
+│   │   ├── log_service.py
+│   │   ├── pin_service.py
+│   │   ├── robot_service.py
+│   │   ├── stock_service.py
+│   │   └── stock_csv_service.py    ← 새로 추가됨: CSV 로직 핵심
+│   ├── static
+│   │   ├── css
+│   │   ├── images
+│   │   └── js
+│   ├── templates
+│   │   ├── index.html
+│   │   ├── log.html
+│   │   ├── robot.html
+│   │   └── stock.html
+│   ├── utils
+│   │   └── csv_inspector.py 	 ← 새로 추가됨: CSV 파일 분석기(Inspector)
+│   └── websocket
+│       ├── __init__.py
+│       ├── handler.py
+│       └── manager.py
+└── requirements.txt
+|-- README copy.md
+|-- README.md
+|-- TroubleShooting.md
+|-- core
+|   |-- ros
+|   |   |-- listener.py
+|   |   `-- publisher.py
+|   `-- websocket
+|       `-- client.py
+|-- main.py
+|-- requirements.txt
+`-- system
+    |-- __init__.py
+    |-- controller.py
+    |-- data_processor.py
+    `-- message_builder.py
