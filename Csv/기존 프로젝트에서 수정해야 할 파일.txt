@@ -1,0 +1,80 @@
+트리에서 수정해야 할 곳(CSV 삽입 시, 변동되어야 할 파일)을 체크.
+
+├── Ec2-Vscode.md
+├── README copy.md
+├── README.md
+├── TroubleShooting.md
+├── alembic.ini
+├── app
+│   ├── core
+│   │   ├── config.py
+│   │   └── database.py
+│   ├── crud
+│   │   ├── category_crud.py
+│   │   ├── log_crud.py
+│   │   ├── pin_crud.py
+│   │   ├── robot_crud.py
+│   │   └── stock_crud.py
+│   ├── main.py
+│   ├── models
+│   │   ├── __init__.py
+│   │   ├── category_model.py
+│   │   ├── log_model.py
+│   │   ├── pin_model.py
+│   │   ├── robot_model.py
+│   │   └── stock_model.py
+│   ├── routers
+│   │   ├── category_router.py
+│   │   ├── log_router.py
+│   │   ├── page_router.py
+│   │   ├── pin_router.py
+│   │   ├── robot_router.py
+│   │   └── stock_router.py
+│   ├── schemas
+│   │   ├── category_schema.py
+│   │   ├── log_schema.py
+│   │   ├── pin_schema.py
+│   │   ├── robot_schema.py
+│   │   └── stock_schema.py
+│   ├── services
+│   │   ├── category_service.py
+│   │   ├── log_service.py
+│   │   ├── pin_service.py
+│   │   ├── robot_service.py
+│   │   └── stock_service.py
+│   ├── static
+│   │   ├── css
+│   │   ├── images
+│   │   └── js
+│   ├── templates
+│   │   ├── index.html
+│   │   ├── log.html
+│   │   ├── robot.html
+│   │   └── stock.html
+│   ├── utils
+│   └── websocket
+│       ├── __init__.py
+│       ├── handler.py
+│       └── manager.py
+└── requirements.txt
+|-- README copy.md
+|-- README.md
+|-- TroubleShooting.md
+|-- core
+|   |-- ros
+|   |   |-- listener.py
+|   |   `-- publisher.py
+|   `-- websocket
+|       `-- client.py
+|-- main.py		→ 1줄 추가.
+|-- requirements.txt
+`-- system
+    |-- __init__.py
+    |-- controller.py
+    |-- data_processor.py
+    `-- message_builder.py
+
+
+※ main.py에서 다음 코드 추가.
+from app.routers.stock_csv_router import router as stock_csv_router
+app.include_router(stock_csv_router)

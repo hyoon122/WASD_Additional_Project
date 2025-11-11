@@ -1,0 +1,7 @@
+app/
+├── routers/
+│   ├── stock_router.py
+│   └── stock_csv_router.py     ← CSV API (HTTP 라우터)
+└── services/
+    ├── stock_service.py
+    └── stock_csv_service.py    ← CSV 로직 핵심

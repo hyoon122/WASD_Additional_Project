@@ -1,0 +1,11 @@
+from uuid import uuid4
+from app.schemas.robot_schema import CommandV1, AckV1, ResultV1, TelemetryV1, parse_robot_message_v1
+
+cmd = CommandV1(command_id=uuid4(), action="MOVE", params={"x": 1.0, "y": 2.0})
+ack = AckV1(command_id=cmd.command_id, accepted=True)
+res = ResultV1(command_id=cmd.command_id, status="success", latency_ms=500)
+tel = TelemetryV1(battery=95, mode="IDLE", position={"x": 1.0, "y": 2.0, "theta": 0.0})
+
+for m in [cmd, ack, res, tel]:
+    d = m.model_dump()
+    _ = parse_robot_message_v1(d)  # 예외 없으면 OK
