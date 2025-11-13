@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>상품 목록 - CSV 데모</title>
+  <style>
+    /* 전체 레이아웃 스타일 */
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      background-color: #f5f5f5;
+    }
+
+    .page {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px 16px 40px;
+    }
+
+    h1 {
+      margin: 0 0 16px;
+    }
+
+    /* 툴바 영역 */
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      background-color: #ffffff;
+      padding: 12px 16px;
+      border-radius: 8px;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+      margin-bottom: 16px;
+    }
+
+    .toolbar-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .toolbar label {
+      font-size: 14px;
+      color: #555;
+    }
+
+    .toolbar input[type="text"],
+    .toolbar select {
+      padding: 6px 8px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      font-size: 14px;
+      min-width: 180px;
+    }
+
+    /* 버튼 스타일 */
+    .btn {
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background-color 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: default;
+      box-shadow: none;
+    }
+
+    .btn-primary {
+      background-color: #2563eb;
+      color: #ffffff;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background-color: #1d4ed8;
+      box-shadow: 0 2px 6px rgba(37, 99, 235, 0.35);
+    }
+
+    .btn-secondary {
+      background-color: #ffffff;
+      color: #111827;
+      border-color: #d1d5db;
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      background-color: #f3f4f6;
+      box-shadow: 0 2px 4px rgba(15, 23, 42, 0.1);
+    }
+
+    .btn-text {
+      background-color: transparent;
+      color: #4b5563;
+      border: none;
+    }
+
+    .btn-text:hover {
+      background-color: #e5e7eb;
+    }
+
+    /* 상품 목록 테이블 */
+    .table-card {
+      background-color: #ffffff;
+      border-radius: 8px;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+      padding: 12px 16px 16px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    thead {
+      background-color: #f3f4f6;
+    }
+
+    th, td {
+      padding: 8px 10px;
+      border-bottom: 1px solid #e5e7eb;
+      text-align: left;
+    }
+
+    th {
+      font-weight: 600;
+      color: #374151;
+    }
+
+    tbody tr:hover {
+      background-color: #f9fafb;
+    }
+
+    /* 토스트 메시지 */
+    .toast-container {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 999;
+    }
+
+    .toast {
+      min-width: 260px;
+      max-width: 360px;
+      background-color: #111827;
+      color: #f9fafb;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      box-shadow: 0 4px 10px rgba(15, 23, 42, 0.4);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .toast-success {
+      background-color: #15803d;
+    }
+
+    .toast-error {
+      background-color: #b91c1c;
+    }
+
+    .toast-message {
+      flex: 1;
+    }
+
+    /* 모달 오버레이 */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background-color: rgba(15, 23, 42, 0.45);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 900;
+    }
+
+    .modal-backdrop.active {
+      display: flex;
+    }
+
+    .modal {
+      background-color: #ffffff;
+      border-radius: 12px;
+      padding: 20px 20px 16px;
+      max-width: 420px;
+      width: 90%;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.4);
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .modal-title {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .modal-close {
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font-size: 18px;
+      line-height: 1;
+      padding: 2px 6px;
+    }
+
+    .modal-body {
+      font-size: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .field-label {
+      font-size: 13px;
+      color: #4b5563;
+    }
+
+    .field input[type="file"] {
+      font-size: 13px;
+    }
+
+    .file-name {
+      font-size: 13px;
+      color: #6b7280;
+      min-height: 18px;
+    }
+
+    .checkbox-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      font-size: 13px;
+      color: #4b5563;
+    }
+
+    .checkbox-row input {
+      margin-top: 2px;
+    }
+
+    .modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    /* 결과 영역 */
+    .result-card {
+      margin-top: 16px;
+      background-color: #ffffff;
+      border-radius: 8px;
+      padding: 12px 16px 16px;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+    }
+
+    .result-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .result-title {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .result-summary {
+      font-size: 13px;
+      color: #4b5563;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 500;
+      background-color: #eff6ff;
+      color: #1d4ed8;
+    }
+
+    .error-badge {
+      display: inline-flex;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      background-color: #fef2f2;
+      color: #b91c1c;
+      margin-left: 6px;
+    }
+
+    .error-row {
+      background-color: #fef2f2;
+    }
+
+    .error-row:hover {
+      background-color: #fee2e2;
+    }
+
+    .result-note {
+      font-size: 12px;
+      color: #6b7280;
+      margin-bottom: 6px;
+    }
+
+    @media (max-width: 640px) {
+      .toolbar {
+        align-items: flex-start;
+      }
+      .toolbar-group {
+        width: 100%;
+      }
+      .toolbar input[type="text"],
+      .toolbar select {
+        width: 100%;
+      }
+      .table-card {
+        padding: 8px;
+      }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <h1>상품 목록 (CSV 데모)</h1>
+  </header>
+
+  <!-- 상단 툴바 -->
+  <section class="toolbar">
+    <div class="toolbar-group">
+      <label for="keyword">검색</label>
+      <input id="keyword" type="text" placeholder="상품명 또는 코드 검색" />
+    </div>
+
+    <div class="toolbar-group">
+      <label for="category">카테고리</label>
+      <select id="category">
+        <option value="">전체</option>
+        <option value="1">식품</option>
+        <option value="2">생활용품</option>
+        <option value="3">전자제품</option>
+      </select>
+    </div>
+
+    <div class="toolbar-group">
+      <button id="btnExport" class="btn btn-secondary" type="button">
+        CSV 내보내기
+      </button>
+      <button id="btnUpload" class="btn btn-primary" type="button">
+        CSV 업로드
+      </button>
+    </div>
+  </section>
+
+  <!-- 상품 목록 테이블 (샘플 데이터) -->
+  <section class="table-card">
+    <table>
+      <thead>
+      <tr>
+        <th>ID</th>
+        <th>상품명</th>
+        <th>재고</th>
+        <th>카테고리</th>
+        <th>수정일</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+        <td>101</td>
+        <td>예시 상품 A</td>
+        <td>34</td>
+        <td>식품</td>
+        <td>2025-11-10</td>
+      </tr>
+      <tr>
+        <td>102</td>
+        <td>예시 상품 B</td>
+        <td>0</td>
+        <td>생활용품</td>
+        <td>2025-11-11</td>
+      </tr>
+      <tr>
+        <td>103</td>
+        <td>예시 상품 C</td>
+        <td>128</td>
+        <td>전자제품</td>
+        <td>2025-11-12</td>
+      </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 드라이런 결과 렌더링 영역 -->
+  <section id="csv-result"></section>
+</div>
+
+<!-- 토스트 영역 -->
+<div id="toastContainer" class="toast-container"></div>
+
+<!-- 모달 -->
+<div id="modalBackdrop" class="modal-backdrop">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">CSV 업로드</div>
+      <button class="modal-close" type="button" aria-label="닫기">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <span class="field-label">CSV 파일 선택</span>
+        <input id="fileInput" type="file" accept=".csv" />
+        <div id="fileName" class="file-name"></div>
+      </div>
+      <div class="checkbox-row">
+        <input id="dryRunCheckbox" type="checkbox" checked />
+        <label for="dryRunCheckbox">
+          드라이런 모드로 실행<br />
+          <span style="color:#6b7280;">
+            실제 데이터베이스에 저장하지 않고, 유효성 검사 결과만 확인함.
+          </span>
+        </label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button id="btnCancelModal" class="btn btn-text" type="button">취소</button>
+      <button id="btnSubmitUpload" class="btn btn-primary" type="button" disabled>업로드</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // 모달 관련 요소 참조함
+  const modalBackdrop = document.getElementById("modalBackdrop");
+  const modalCloseButton = modalBackdrop.querySelector(".modal-close");
+  const btnCancelModal = document.getElementById("btnCancelModal");
+  const btnUpload = document.getElementById("btnUpload");
+  const btnExport = document.getElementById("btnExport");
+  const btnSubmitUpload = document.getElementById("btnSubmitUpload");
+  const fileInput = document.getElementById("fileInput");
+  const fileNameLabel = document.getElementById("fileName");
+  const dryRunCheckbox = document.getElementById("dryRunCheckbox");
+  const csvResultSection = document.getElementById("csv-result");
+  const toastContainer = document.getElementById("toastContainer");
+
+  // 모달 열기 함수임
+  function openModal() {
+    modalBackdrop.classList.add("active");
+  }
+
+  // 모달 닫기 함수임
+  function closeModal() {
+    modalBackdrop.classList.remove("active");
+    fileInput.value = "";
+    fileNameLabel.textContent = "";
+    btnSubmitUpload.disabled = true;
+  }
+
+  // 토스트 메시지 생성 함수임
+  function showToast(message, type) {
+    const toast = document.createElement("div");
+    toast.classList.add("toast");
+    if (type === "success") {
+      toast.classList.add("toast-success");
+    } else if (type === "error") {
+      toast.classList.add("toast-error");
+    }
+    const msgSpan = document.createElement("div");
+    msgSpan.classList.add("toast-message");
+    msgSpan.textContent = message;
+
+    const closeBtn = document.createElement("button");
+    closeBtn.classList.add("btn-text");
+    closeBtn.type = "button";
+    closeBtn.textContent = "닫기";
+    closeBtn.onclick = () => toast.remove();
+
+    toast.appendChild(msgSpan);
+    toast.appendChild(closeBtn);
+
+    toastContainer.appendChild(toast);
+
+    // 자동 제거 타이머 설정함
+    setTimeout(() => {
+      toast.remove();
+    }, 3500);
+  }
+
+  // 드라이런 결과 렌더링 함수임
+  function renderDryRunResult(response) {
+    csvResultSection.innerHTML = "";
+
+    if (!response || !response.summary) {
+      return;
+    }
+
+    const card = document.createElement("div");
+    card.classList.add("result-card");
+
+    const header = document.createElement("div");
+    header.classList.add("result-header");
+
+    const title = document.createElement("div");
+    title.classList.add("result-title");
+    title.textContent = "CSV 검증 결과";
+
+    const chips = document.createElement("div");
+    const dryRunChip = document.createElement("span");
+    dryRunChip.classList.add("chip");
+    dryRunChip.textContent = response.dryRun ? "드라이런 모드" : "실제 반영";
+
+    const errorBadge = document.createElement("span");
+    errorBadge.classList.add("error-badge");
+    errorBadge.textContent = "오류 " + response.summary.errorCount + "건";
+
+    chips.appendChild(dryRunChip);
+    chips.appendChild(errorBadge);
+
+    header.appendChild(title);
+    header.appendChild(chips);
+
+    const summary = document.createElement("div");
+    summary.classList.add("result-summary");
+    summary.textContent =
+      "총 " +
+      response.summary.total +
+      "건 중 성공 " +
+      response.summary.successCount +
+      "건, 오류 " +
+      response.summary.errorCount +
+      "건";
+
+    const note = document.createElement("div");
+    note.classList.add("result-note");
+    note.textContent = "오류 행을 확인한 후 CSV 파일을 수정하여 다시 업로드하면 됨.";
+
+    card.appendChild(header);
+    card.appendChild(summary);
+    card.appendChild(note);
+
+    // 오류 테이블 생성함
+    if (response.errors && response.errors.length > 0) {
+      const table = document.createElement("table");
+      const thead = document.createElement("thead");
+      const headRow = document.createElement("tr");
+      ["행 번호", "오류 유형", "오류 메시지", "원본 데이터 요약"].forEach(function (text) {
+        const th = document.createElement("th");
+        th.textContent = text;
+        headRow.appendChild(th);
+      });
+      thead.appendChild(headRow);
+      table.appendChild(thead);
+
+      const tbody = document.createElement("tbody");
+
+      response.errors.forEach(function (err) {
+        const tr = document.createElement("tr");
+        tr.classList.add("error-row");
+
+        const tdRow = document.createElement("td");
+        tdRow.textContent = err.rowNumber;
+
+        const tdCode = document.createElement("td");
+        tdCode.textContent = err.code;
+
+        const tdMsg = document.createElement("td");
+        tdMsg.textContent = err.message;
+
+        const tdRaw = document.createElement("td");
+        const raw = err.raw || {};
+        const summaryParts = [];
+        if (raw.name) summaryParts.push("상품명=" + raw.name);
+        if (raw.inventory !== undefined) summaryParts.push("재고=" + raw.inventory);
+        if (raw.categoryId !== undefined) summaryParts.push("카테고리ID=" + raw.categoryId);
+        tdRaw.textContent = summaryParts.join(", ");
+
+        tr.appendChild(tdRow);
+        tr.appendChild(tdCode);
+        tr.appendChild(tdMsg);
+        tr.appendChild(tdRaw);
+
+        tbody.appendChild(tr);
+      });
+
+      table.appendChild(tbody);
+      card.appendChild(table);
+    }
+
+    csvResultSection.appendChild(card);
+  }
+
+  // 모의 업로드 요청 처리 함수임 (실제 서버 대신 사용함)
+  function simulateUpload(file, dryRun) {
+    // 실제 구현에서는 FormData 생성 후 fetch 호출해야 함
+    // 여기서는 데모를 위해 고정된 응답 반환함
+    showToast("CSV 업로드 처리 중...", "success");
+
+    setTimeout(function () {
+      // 예시 응답 데이터임
+      const mockResponse = {
+        success: true,
+        dryRun: dryRun,
+        summary: {
+          total: 120,
+          successCount: 110,
+          errorCount: 10
+        },
+        errors: [
+          {
+            rowNumber: 5,
+            code: "MISSING_INVENTORY",
+            message: "inventory 값이 비어 있음.",
+            raw: {
+              name: "예시상품-1",
+              inventory: "",
+              categoryId: "3"
+            }
+          },
+          {
+            rowNumber: 8,
+            code: "INVALID_CATEGORY",
+            message: "존재하지 않는 카테고리 ID 임.",
+            raw: {
+              name: "예시상품-2",
+              inventory: "10",
+              categoryId: "999"
+            }
+          }
+        ]
+      };
+
+      if (dryRun) {
+        showToast("드라이런 완료: 성공 110건, 오류 10건", "success");
+        renderDryRunResult(mockResponse);
+      } else {
+        showToast("업로드 완료: 실제 데이터가 반영되었다고 가정함.", "success");
+        csvResultSection.innerHTML = "";
+      }
+    }, 1000);
+  }
+
+  // CSV 내보내기 버튼 클릭 핸들러임
+  btnExport.addEventListener("click", function () {
+    // 실제 구현에서는 현재 검색어, 카테고리 기준으로 다운로드 요청해야 함
+    // 여기서는 단순 토스트만 보여줌
+    showToast("CSV 내보내기 요청이 발생했다고 가정함.", "success");
+  });
+
+  // CSV 업로드 버튼 클릭 시 모달 열기함
+  btnUpload.addEventListener("click", openModal);
+
+  // 모달 닫기 버튼 핸들러임
+  modalCloseButton.addEventListener("click", closeModal);
+  btnCancelModal.addEventListener("click", closeModal);
+
+  // 배경 클릭 시 모달 닫기 처리함
+  modalBackdrop.addEventListener("click", function (event) {
+    if (event.target === modalBackdrop) {
+      closeModal();
+    }
+  });
+
+  // 파일 선택 변경 시 파일명 표시 및 업로드 버튼 활성화 상태 갱신함
+  fileInput.addEventListener("change", function () {
+    const file = fileInput.files[0];
+    if (file) {
+      fileNameLabel.textContent = file.name;
+      btnSubmitUpload.disabled = false;
+    } else {
+      fileNameLabel.textContent = "";
+      btnSubmitUpload.disabled = true;
+    }
+  });
+
+  // 업로드 버튼 클릭 시 모의 업로드 실행함
+  btnSubmitUpload.addEventListener("click", function () {
+    const file = fileInput.files[0];
+    if (!file) {
+      showToast("CSV 파일을 먼저 선택해야 함.", "error");
+      return;
+    }
+    const dryRun = dryRunCheckbox.checked;
+
+    closeModal();
+    simulateUpload(file, dryRun);
+  });
+</script>
+</body>
+</html>
